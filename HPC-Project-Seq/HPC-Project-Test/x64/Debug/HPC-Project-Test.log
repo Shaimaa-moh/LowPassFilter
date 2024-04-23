@@ -1,0 +1,4 @@
+﻿  main.cpp
+D:\AinShams\Senior-2\Spring\HPC\Project\Practice\HPC-Project-Test\HPC-Project-Test\main.cpp(152,62): warning C4244: '+=': conversion from 'double' to 'int', possible loss of data
+  main.obj : MSIL module encountered; incremental linking is disabled for MSIL; performing full link
+  HPC-Project-Test.vcxproj -> D:\AinShams\Senior-2\Spring\HPC\Project\Practice\HPC-Project-Test\x64\Debug\HPC-Project-Test.exe
