@@ -1,178 +1,180 @@
 #include <iostream>
+#include <omp.h>
 #include <math.h>
 #include <stdlib.h>
-#include <omp.h>
-#include<string.h>
-#include<msclr\marshal_cppstd.h>
-#include <ctime>// include this header 
-#pragma once
-
+#include <string.h>
+#include <msclr\marshal_cppstd.h>
+#include <ctime>
+#include <mpi.h>
 #using <mscorlib.dll>
 #using <System.dll>
 #using <System.Drawing.dll>
 #using <System.Windows.Forms.dll>
+
 using namespace std;
 using namespace msclr::interop;
 
-int* inputImage(int* w, int* h, System::String^ imagePath) //put the size of image in w & h
-{
-	int* input; //point to the memory block allocated to store the pixel values of the image.
+// Function to generate a 1D Gaussian kernel
+double* generateGaussianKernel(int size, double sigma) {
+    double* kernel = new double[size];
+    double sum = 0.0;
+    int halfSize = size / 2;
 
+    for (int i = -halfSize; i <= halfSize; ++i) {
+        kernel[i + halfSize] = exp(-(i * i) / (2 * sigma * sigma));
+        sum += kernel[i + halfSize];
+    }
 
-	int OriginalImageWidth, OriginalImageHeight;
+    // Normalize the kernel
+    for (int i = 0; i < size; ++i) {
+        kernel[i] /= sum;
+    }
 
-	//********************Read Image and save it to local arrayss********	
-	//Read Image and save it to local arrayss
-
-	System::Drawing::Bitmap BM(imagePath);
-
-	OriginalImageWidth = BM.Width;
-	OriginalImageHeight = BM.Height;
-	*w = BM.Width;
-	*h = BM.Height;
-
-	//integer arrays Red, Green, and Blue, each of size BM.Height * BM.Width, to store the individual color channels of the image.
-
-	int* Red = new int[BM.Height * BM.Width];
-	int* Green = new int[BM.Height * BM.Width];
-	int* Blue = new int[BM.Height * BM.Width];
-	input = new int[BM.Height * BM.Width]; //Allocate memory for the input array to store the grayscale values of the image.
-#pragma omp parallel for
-
-	for (int i = 0; i < BM.Height; i++)
-	{
-		for (int j = 0; j < BM.Width; j++)
-		{
-			System::Drawing::Color c = BM.GetPixel(j, i);
-
-			Red[i * BM.Width + j] = c.R;
-			Blue[i * BM.Width + j] = c.B;
-			Green[i * BM.Width + j] = c.G;
-
-			// calculate the grayscale value as the average of the RGB value
-			input[i * BM.Width + j] = ((c.R + c.B + c.G) / 3);
-
-		}
-
-	}
-	// points to the memory block containing the grayscale values of the image.
-
-	return input;
+    return kernel;
 }
 
+int* inputImage(int* w, int* h, System::String^ imagePath) //put the size of image in w & h
+{
+    int OriginalImageWidth, OriginalImageHeight;
+
+    //*********************************************************Read Image and save it to local arrayss*************************	
+    //Read Image and save it to local arrayss
+    System::Drawing::Bitmap BM(imagePath);
+
+    OriginalImageWidth = BM.Width;
+    OriginalImageHeight = BM.Height;
+    *w = OriginalImageWidth;
+    *h = OriginalImageHeight;
+
+    // Allocate memory for input image
+    int* input = new int[OriginalImageWidth * OriginalImageHeight];
+
+    // Read the pixel values and store them in the input array
+    for (int i = 0; i < OriginalImageHeight; i++) {
+        for (int j = 0; j < OriginalImageWidth; j++) {
+            System::Drawing::Color c = BM.GetPixel(j, i);
+            // Store the green component of the pixel
+            input[(i * OriginalImageWidth + j)] = c.ToArgb();
+        }
+    }
+    return input;
+}
 
 void createImage(int* image, int width, int height, int index)
 {
-	// *image : A pointer to an array containing pixel values of the image.
+    System::Drawing::Bitmap MyNewImage(width, height);
 
-	System::Drawing::Bitmap MyNewImage(width, height); // Creates a new Bitmap object named MyNewImage with the specified widthand height.This will be used to create the new image.
+    for (int i = 0; i < MyNewImage.Height; i++) {
+        for (int j = 0; j < MyNewImage.Width; j++) {
+            // Set the pixel color in the new image
+            int argb = image[i * width + j];
+            // Create a Color object from the ARGB value
+            System::Drawing::Color c = System::Drawing::Color::FromArgb(argb);
 
-	//it checks each pixel's intensity (stored in the image array) to ensure it falls within the valid range of 0 to 255.
-#pragma omp parallel for
+            MyNewImage.SetPixel(j, i, c);
+        }
+    }
 
-	for (int i = 0; i < MyNewImage.Height; i++)
-	{
-		for (int j = 0; j < MyNewImage.Width; j++)
-		{
-			//If a pixel's intensity is less than 0, it sets it to 0. 
-			if (image[i * width + j] < 0)
-			{
-				image[i * width + j] = 0;
-			}
-			//If it's greater than 255, it sets it to 255. 
-			if (image[i * width + j] > 255)
-			{
-				image[i * width + j] = 255;
-			}
-			//It then creates a new Color object (c) using the intensity value for all three RGB components. This effectively creates a grayscale image.
-
-			System::Drawing::Color c = System::Drawing::Color::FromArgb(image[i * MyNewImage.Width + j], image[i * MyNewImage.Width + j], image[i * MyNewImage.Width + j]);
-			MyNewImage.SetPixel(j, i, c);
-		}
-	}
-	MyNewImage.Save("..//Data//Output//outputRes" + index + ".png");
-	cout << "result Image Saved " << index << endl;
+    // Save the image
+    MyNewImage.Save("./output_image" + ".jpg");
+    cout << "result Image Saved " << index << endl;
 }
-int* lowPassFilter(int* input, int height, int width)
-{
-	int* output = new int[height * width];
 
-	// Gaussian kernel weights
-	double kernel[3][3] = {
-		{1.0 / 16, 2.0 / 16, 1.0 / 16},
-		{2.0 / 16, 4.0 / 16, 2.0 / 16},
-		{1.0 / 16, 2.0 / 16, 1.0 / 16}
-	};
+int* padImage(int* input, int width, int height, int kernelSize) {
 
-	int numThreads = 4; // Adjust as needed
-	omp_set_num_threads(numThreads);
+    int paddedWidth = width + 2 * (kernelSize / 2);
+    int paddedHeight = height + 2 * (kernelSize / 2);
 
-	// Apply the filter in parallel
-      #pragma omp parallel for shared(input, output) num_threads(numThreads)
+    // Allocate memory for padded image (ARGB for each pixel)
+    int* paddedImage = new int[paddedWidth * paddedHeight];
 
-	for (int i = 0; i < height; i++)
-	{
-		for (int j = 0; j < width; j++)
-		{
-			double total = 0;
+    // Fill the padded image with zeros
+    memset(paddedImage, 0, sizeof(int) * paddedWidth * paddedHeight);
 
-			// Convolve with the kernel ,For each pixel loop iterates over the neighboring pixels in a 3x3 region (the kernel).
+    // Copy the original image into the padded image
+    for (int i = 0; i < height; ++i) {
+        for (int j = 0; j < width; ++j) {
+            // Get the ARGB value from the input array
+            int argb = input[i * width + j];
+            // Store the ARGB value in the padded image
+            paddedImage[(i + kernelSize / 2) * paddedWidth + (j + kernelSize / 2)] = argb;
+        }
+    }
 
-			//loop over kernel rows 
-			for (int m = -1; m <= 1; m++)
-			{
-				// loop over kernel cols
-				for (int n = -1; n <= 1; n++)
-				{
+    return paddedImage;
+}
 
-					int row = i + m; // adds the relative row coordinate m to the current row coordinate i.
-					//It calculates the row index of the pixel in the input image that corresponds to the current position in the kernel.
+int* LowPassOmp(int* input, int width, int height, int kernelSize, double sigma) {
+    // Allocate memory for the filtered image
+    int* paddedImage = padImage(input, width, height, kernelSize);
 
-					int col = j + n;
+    double* kernel = generateGaussianKernel(kernelSize, sigma);
+    int* filteredImage = new int[width * height];
+    // Apply the blur filter
+    // Iterate over each pixel in the image
+#pragma omp parallel for collapse(2) schedule(static) shared(input, width, height, kernelSize,sigma)
 
-					//Condition to check  that only valid pixel positions within the image bounds are accessed.
+    for (int i = kernelSize / 2; i < height + kernelSize / 2; ++i) {
+        for (int j = kernelSize / 2; j < width + kernelSize / 2; ++j) {
+            double sumR = 0, sumG = 0, sumB = 0;
 
-					if (row >= 0 && row < height && col >= 0 && col < width)
-					{
-						//The input pixel values are multiplied by the corresponding kernel elements.
+            // Convolve with the Gaussian kernel
+            for (int m = -kernelSize / 2; m <= kernelSize / 2; ++m) {
+                for (int n = -kernelSize / 2; n <= kernelSize / 2; ++n) {
+                    int indexX = j + n;
+                    int indexY = i + m;
+                    if (indexX >= 0 && indexX < width + kernelSize && indexY >= 0 && indexY < height + kernelSize) {
+                        int pixel = paddedImage[indexY * (width + kernelSize) + indexX];
+                        double weight = kernel[m + kernelSize / 2] * kernel[n + kernelSize / 2];
+                        sumR += weight * ((pixel >> 16) & 0xFF);
+                        sumG += weight * ((pixel >> 8) & 0xFF);
+                        sumB += weight * (pixel & 0xFF);
+                    }
+                }
+            }
 
-						//Adding 1 to m and n  map correctly to the indices 0, 1, and 2 in the kernel array.
-						// input[ row*width + col] The resulting value represents the index in the input image array where the pixel value corresponding to the current position in the kernel is located.
+            // Combine the weighted sums to get the filtered pixel value
+            int filteredPixel = ((int)sumR << 16) | ((int)sumG << 8) | (int)sumB;
+            filteredImage[(i - kernelSize / 2) * width + (j - kernelSize / 2)] = filteredPixel;
+        }
+    }
 
-						total += input[row * width + col] * kernel[m + 1][n + 1];
-					}
-				}
-			}
-			// This line assigns the integer value of total to the corresponding pixel in the output image after the convolution is complete.
-			output[i * width + j] = (int)total;
-		}
-	}
+    // Free memory allocated for padded image
+    delete[] paddedImage;
+    delete[] kernel;
 
-	return output;
+    return filteredImage;
 }
 
 int main()
 {
-	int ImageWidth = 4, ImageHeight = 4;
 
-	int start_s, stop_s, TotalTime = 0;
+    int ImageWidth = 4, ImageHeight = 4;
 
-	System::String^ imagePath;
-	std::string img;
-	img = "..//Data//Input//test.png";
-	start_s = clock();
+    int start_s, stop_s, TotalTime = 0;
 
-	imagePath = marshal_as<System::String^>(img);
-	int* imageData = inputImage(&ImageWidth, &ImageHeight, imagePath);
-	int* FilterOutput = lowPassFilter(imageData, ImageWidth, ImageHeight);
+    System::String^ imagePath;
+    std::string img;
+    img = "..//Data//Input//test1.jpg";
 
+    imagePath = marshal_as<System::String^>(img);
+    int* imageData = inputImage(&ImageWidth, &ImageHeight, imagePath);
+    //sequentialLowPassFilter(imageData, ImageWidth, ImageHeight, 3, 0, rank, size);
+    start_s = clock();
+    int kernelsize = 3;
+    double sigma = 1.0;
+    //parallelLowPassFilter(imageData, ImageWidth, ImageHeight, 3, 0, rank, size);
+    int* blurredImageData = LowPassOmp(imageData, ImageWidth, ImageHeight, kernelsize, sigma);
+    stop_s = clock();
+    TotalTime += (stop_s - start_s) / double(CLOCKS_PER_SEC) * 1000;
 
-	stop_s = clock();
-	TotalTime += (stop_s - start_s) / double(CLOCKS_PER_SEC) * 1000;
-	createImage(FilterOutput, ImageWidth, ImageHeight, 2);
-	cout << "time: " << TotalTime << endl;
+    // Create the filtered (blurred) image
+    createImage(blurredImageData, ImageWidth, ImageHeight, 1);
+    cout << "time: " << TotalTime << " milliseconds" << endl;
 
-	free(FilterOutput);
-	return 0;
+    // Free memory
+    delete[] blurredImageData;
+    system("pause");
 
+    return 0;
 }
