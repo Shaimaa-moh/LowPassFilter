@@ -87,7 +87,7 @@ int* applyBlurFilter(int* input, int width, int height, int kernelSize, int sigm
     double** kernel = generate2DGaussianKernel(kernelSize, sigma);
     int* filteredImage = new int[width * height];
 
-#pragma omp parallel for schedule(static)
+//#pragma omp parallel for schedule(static)
     for (int i = 0; i < height; ++i) {
         for (int j = 0; j < width; ++j) {
             double sumR = 0, sumG = 0, sumB = 0;
