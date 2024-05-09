@@ -84,10 +84,18 @@ int* padImage(int* input, int width, int height, int kernelSize) {
 }
 
 int* applyBlurFilter(int* input, int width, int height, int kernelSize, int sigma) {
+    // Generate Gaussian kernel
     double** kernel = generate2DGaussianKernel(kernelSize, sigma);
+
+    // Allocate memory for filtered image
     int* filteredImage = new int[width * height];
 
-//#pragma omp parallel for schedule(static)
+    // Pad the input image
+    int paddedWidth = width + 2 * (kernelSize / 2);
+    int paddedHeight = height + 2 * (kernelSize / 2);
+    int* paddedImage = padImage(input, width, height, kernelSize);
+
+    // Apply Gaussian blur using padded image
     for (int i = 0; i < height; ++i) {
         for (int j = 0; j < width; ++j) {
             double sumR = 0, sumG = 0, sumB = 0;
@@ -95,26 +103,12 @@ int* applyBlurFilter(int* input, int width, int height, int kernelSize, int sigm
 
             for (int m = -kernelSize / 2; m <= kernelSize / 2; ++m) {
                 for (int n = -kernelSize / 2; n <= kernelSize / 2; ++n) {
-                    int indexX = j + n;
-                    int indexY = i + m;
+                    int indexX = j + n + (kernelSize / 2);
+                    int indexY = i + m + (kernelSize / 2);
 
-                    // Apply boundary conditions: reflect at the borders
-                    if (indexX < 0) {
-                        indexX = -indexX;
-                    }
-                    else if (indexX >= width) {
-                        indexX = 2 * width - indexX - 1;
-                    }
-
-                    if (indexY < 0) {
-                        indexY = -indexY;
-                    }
-                    else if (indexY >= height) {
-                        indexY = 2 * height - indexY - 1;
-                    }
-
-                    int argb = input[indexY * width + indexX];
+                    int argb = paddedImage[indexY * paddedWidth + indexX];
                     double weight = kernel[m + kernelSize / 2][n + kernelSize / 2];
+
                     sumR += weight * ((argb >> 16) & 0xFF);
                     sumG += weight * ((argb >> 8) & 0xFF);
                     sumB += weight * (argb & 0xFF);
@@ -122,24 +116,25 @@ int* applyBlurFilter(int* input, int width, int height, int kernelSize, int sigm
                 }
             }
 
-            // Normalize the result
             if (weightSum > 0) {
                 sumR /= weightSum;
                 sumG /= weightSum;
                 sumB /= weightSum;
             }
 
-            // Combine the weighted sums to get the filtered pixel value
             int filteredPixel = (((int)sumR) << 16) | (((int)sumG) << 8) | ((int)sumB);
             filteredImage[i * width + j] = filteredPixel;
         }
     }
 
+    // Cleanup memory
+    delete[] paddedImage;
     for (int i = 0; i < kernelSize; ++i) {
         delete[] kernel[i];
     }
     delete[] kernel;
 
+    // Return filtered image
     return filteredImage;
 }
 
