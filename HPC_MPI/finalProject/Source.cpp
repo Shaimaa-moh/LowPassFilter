@@ -140,15 +140,18 @@ int* applyBlurFilter(int* input, int width, int height, int kernelSize, int sigm
 
 
 
+
 void parallelLowPassFilter(int* imageData, int ImageWidth, int ImageHeight, int kernelSize, int index, int rank, int size) {
    // MPI_Bcast(&ImageWidth, 1, MPI_INT, 0, MPI_COMM_WORLD);
     //MPI_Bcast(&ImageHeight, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
+    double start_s, stop_s, TotalTime = 0;
     int rowsPerProcess = ImageHeight / size;
     int startRow = rank * rowsPerProcess;
     int endRow = startRow + rowsPerProcess;
 
     int* localImageData = new int[ImageWidth * rowsPerProcess];
+    start_s = clock();
     MPI_Scatter(imageData + startRow * ImageWidth, ImageWidth * rowsPerProcess, MPI_INT,
         localImageData, ImageWidth * rowsPerProcess, MPI_INT, 0, MPI_COMM_WORLD);
 
@@ -163,8 +166,12 @@ void parallelLowPassFilter(int* imageData, int ImageWidth, int ImageHeight, int 
     //}
     MPI_Gather(filteredData, ImageWidth * rowsPerProcess, MPI_INT,
         gatheredData + startRow * ImageWidth, ImageWidth * rowsPerProcess, MPI_INT, 0, MPI_COMM_WORLD);
+    stop_s = clock();
+    
     if (rank == 0) {
         createImage(gatheredData, ImageWidth, ImageHeight, 1);
+        TotalTime += (stop_s - start_s) / double(CLOCKS_PER_SEC) * 1000;
+        cout << "time: " << TotalTime << endl;
         delete[] gatheredData;
     }
 
@@ -186,9 +193,9 @@ int main(int argc, char* argv[]) {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    double start_s, stop_s, TotalTime = 0;
+   
 
-    start_s = clock();
+    
 
     //------------------------------------- Low Pass Filter -------------------------------------
 
@@ -196,11 +203,8 @@ int main(int argc, char* argv[]) {
 
     //-------------------------------------------------------------------------------------------
 
-    stop_s = clock();
-    TotalTime += (stop_s - start_s) / double(CLOCKS_PER_SEC) * 1000;
-    if (rank == 0) {
-       cout << "time: " << TotalTime << endl;
-    }
     
+   
+  
     MPI_Finalize();
 }
